@@ -1,0 +1,39 @@
+name: Deploy Firebase Functions
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy_functions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Backend Code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: 'functions/pnpm-lock.yaml'
+
+      - name: Install Function Dependencies
+        run: cd functions && pnpm install
+
+      - name: Build Functions
+        run: cd functions && pnpm run build
+
+      - name: Write Service Account Key
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_MENOWELLNESS_PROD }}' > ./gcloud-credentials.json
+
+      - name: Deploy to Firebase
+        run: npx firebase-tools deploy --only functions --project menowellness-prod --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ./gcloud-credentials.json
