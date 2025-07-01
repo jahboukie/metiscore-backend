@@ -6,11 +6,20 @@ on:
       - main
 
 jobs:
-  deploy_functions:
+  deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Required for the official Google Auth action
+
     steps:
-      - name: Checkout Backend Code
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_MENOWELLNESS_PROD }}'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -30,10 +39,5 @@ jobs:
       - name: Build Functions
         run: cd functions && pnpm run build
 
-      - name: Write Service Account Key
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_MENOWELLNESS_PROD }}' > ./gcloud-credentials.json
-
       - name: Deploy to Firebase
         run: npx firebase-tools deploy --only functions --project menowellness-prod --non-interactive
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ./gcloud-credentials.json
