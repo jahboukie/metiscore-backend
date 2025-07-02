@@ -1,39 +1,53 @@
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { onRequest } from "firebase-functions/v2/https"; // <-- Changed to onRequest
-import { UserRecord } from "firebase-admin/auth";
-import { User } from "./types";
-import * as cors from "cors";
+import {setGlobalOptions} from "firebase-functions/v2";
+import {onRequest} from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
 
-// Initialize CORS middleware with a function call
-const corsHandler = cors({ origin: true });
+// --- ADD THESE TWO LINES ---
+import * as admin from "firebase-admin";
+admin.initializeApp();
+// -------------------------
 
-initializeApp();
+// Set global options for all functions
+setGlobalOptions({maxInstances: 10});
 
-export const onboardnewuser = onRequest({ cors: true }, async (request, response) => {
-  // Use the cors middleware to handle CORS headers
-  corsHandler(request, response, async () => {
-    // We are no longer using onCall, so we must manually check the auth token.
-    // For now, we will trust the data passed from our secure frontend.
-    // In a future step, we would verify the token here.
+// Define the onboardnewuser function
+export const onboardnewuser = onRequest(
+  {cors: true},
+  async (request, response) => {
+    response.set("Access-Control-Allow-Origin", "*");
+    response.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-    const user = request.body.data as UserRecord; // Data is now in request.body.data
-    const { uid, email, displayName } = user;
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
 
-    const newUser: User = {
-      uid,
-      email: email || null,
-      displayName: displayName || null,
-      role: "primary",
-    };
+    logger.info("onboardnewuser function triggered", {structuredData: true});
 
     try {
-      await getFirestore().collection("users").doc(uid).set(newUser, { merge: true });
-      console.log(`Successfully onboarded user ${uid}`);
-      response.status(200).send({ data: { status: "success", message: `User ${uid} onboarded.` } });
+      const user = request.body.data;
+
+      if (!user || !user.uid || !user.email) {
+        logger.error("Missing user object or uid/email in request body.data");
+        response.status(400).send({error: "Invalid user data provided."});
+        return;
+      }
+      
+      await admin.firestore().collection("users").doc(user.uid).set({
+        email: user.email,
+        displayName: user.displayName || null,
+        photoURL: user.photoURL || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      logger.info(`Successfully created user document for ${user.uid}`);
+      response.status(200).send({message: `User ${user.uid} created.`});
+
     } catch (error) {
-      console.error(`Error onboarding user ${uid}:`, error);
-      response.status(500).send({ error: "An error occurred while creating the user profile." });
+      logger.error("Error creating user document:", error);
+      response.status(500).send({error: "Internal Server Error"});
     }
   });
-});
+
+// You can add other functions here in the future, like your generateinvitecode function
