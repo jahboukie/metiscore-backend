@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // USERS: Secure - A user can only access their own document.
+    match /users/{userId} {
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      // Allow creation only during the onboarding flow.
+      allow create: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // JOURNAL ENTRIES: Feature-Rich - Allows for secure partner sharing.
+    match /journal_entries/{entryId} {
+      // READ: You can read an entry if you are the author, OR if it's shared
+      // and your UID is listed as the author's partner.
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.isShared == true && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.partnerId == request.auth.uid)
+      );
+
+      // WRITE: You can only create, update, or delete your own entries.
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // INVITES: Merged Security & Functionality
+    match /invites/{inviteId} {
+      // CREATE: A user can only create an invite that comes from them.
+      allow create: if request.auth != null && request.resource.data.fromUserId == request.auth.uid;
+      
+      // UPDATE: The partner (who is not the original inviter) can update the status to "completed".
+      allow update: if request.auth != null && request.auth.uid != resource.data.fromUserId;
+
+      // No one can read all invites or delete them from the client-side.
+      allow read, delete: if false;
+    }
+  }
+}
